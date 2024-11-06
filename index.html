@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Englanti-Suomi Sanapeli</title>
+    <style>
+        /* Yleinen tausta */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #2980b9; /* Sininen tausta */
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        /* Container-asettelu */
+        .container {
+            width: 90%;
+            max-width: 700px;
+            background-color: rgba(255, 255, 255, 0.9); /* Läpinäkyvä harmaa */
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        h1 {
+            font-size: 2rem;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        
+        #output {
+            margin-top: 20px;
+            color: #27ae60;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        
+        /* Sanaparit-alueen tyylit */
+        #game {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            justify-content: center;
+            width: 100%;
+            max-width: 700px;
+            margin-top: 20px;
+        }
+        
+        .question-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+        
+        .question-block:hover {
+            transform: translateY(-5px);
+            box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .question-block strong {
+            font-size: 1.2rem;
+            color: #34495e;
+            margin-bottom: 10px;
+        }
+
+        /* Näytä vastaus -painike */
+        button {
+            padding: 8px 16px;
+            font-size: 1rem;
+            color: #ffffff;
+            background-color: #3498db;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 10px 5px;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button:focus {
+            outline: none;
+        }
+        
+        /* Vastaus-tekstin tyyli */
+        .answer {
+            font-size: 1.1rem;
+            color: #8e44ad;
+            margin-top: 10px;
+            font-weight: bold;
+            display: none; /* Alussa piilotettu */
+        }
+
+        /* Piilotettu tiedostovalinta */
+        #imageUpload {
+            display: none;
+        }
+
+        /* Odota hetki -tekstin tyyli */
+        #loadingMessage {
+            display: none;
+            font-weight: bold;
+            color: #e67e22;
+            font-size: 1.2rem;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Englanti-Suomi Sanapeli</h1>
+        <p>Valitse toimintatapa:</p>
+        
+        <!-- Ota kuva ja Valitse tiedosto -painikkeet -->
+        <button onclick="triggerImageUpload('environment')">Ota kuva</button>
+        <button onclick="triggerImageUpload()">Valitse tiedosto</button>
+        
+        <!-- Piilotettu tiedoston valinta -->
+        <input type="file" id="imageUpload" accept="image/*">
+        
+        <!-- Odota hetki -viesti -->
+        <div id="loadingMessage">Odota hetki, analysoidaan kuvaa...</div>
+        
+        <div id="output"></div>
+
+        <div id="game">
+            <!-- Tänne lisätään sanat -->
+        </div>
+    </div>
+
+    <!-- Tesseract.js kirjaston lataaminen -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
+    <script>
+        let wordPairs = {}; // Sanapareille (englanti -> suomi)
+
+        // Funktio tiedoston valinnan laukaisemiseksi
+        function triggerImageUpload(captureMode = null) {
+            const imageUpload = document.getElementById('imageUpload');
+            if (captureMode) {
+                imageUpload.setAttribute('capture', captureMode); // Käytä kameranäkymää
+            } else {
+                imageUpload.removeAttribute('capture'); // Käytä normaalia tiedostovalintaa
+            }
+            imageUpload.click(); // Laukaisee tiedoston valinnan
+        }
+
+        // Tekstintunnistuksen aloittaminen automaattisesti, kun kuva on valittu
+        document.getElementById('imageUpload').addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                document.getElementById('loadingMessage').style.display = 'block'; // Näytetään "Odota hetki..."
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    Tesseract.recognize(
+                        event.target.result,
+                        'eng',
+                        {
+                            logger: (m) => console.log(m)
+                        }
+                    ).then(({ data: { text } }) => {
+                        document.getElementById('loadingMessage').style.display = 'none'; // Piilotetaan "Odota hetki..."
+                        processText(text);
+                    });
+                };
+                reader.readAsDataURL(file);
+            } else {
+                document.getElementById('output').innerText = 'Valitse kuva ensin.';
+            }
+        });
+
+        // Tekstin prosessointi ja sanaparien tallentaminen
+        function processText(text) {
+            const lines = text.split('\n');
+            wordPairs = {}; // Nollataan sanapari
+
+            // Käydään jokainen rivi läpi
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                if (trimmedLine) {
+                    const words = trimmedLine.split(/\s+/);
+                    if (words.length >= 2) {
+                        const finnish = cleanWord(words[0]);
+                        const english = cleanWord(words[1]);
+                        wordPairs[finnish] = english;
+                    }
+                }
+            });
+
+            if (Object.keys(wordPairs).length > 0) {
+                document.getElementById('output').innerText = 'Sanaparit löytyivät! Voit katsoa vastaukset.';
+                displayWords();
+            } else {
+                document.getElementById('output').innerText = 'Sanaparit eivät löytyneet. Yritä uudelleen.';
+            }
+        }
+
+        // Sanalistan näyttäminen kahdessa sarakkeessa
+        function displayWords() {
+            document.getElementById('game').style.display = 'grid';
+            const gameContainer = document.getElementById('game');
+            gameContainer.innerHTML = ''; // Tyhjennetään vanhat kysymykset, jos niitä on
+
+            Object.keys(wordPairs).forEach(finnishWord => {
+                const englishWord = wordPairs[finnishWord];
+                const questionBlock = document.createElement('div');
+                questionBlock.classList.add('question-block');
+                questionBlock.innerHTML = `
+                    <div><strong>${finnishWord}</strong></div>
+                    <button onclick="showAnswer(this)">Näytä vastaus</button>
+                    <div class="answer">${englishWord}</div>
+                `;
+                gameContainer.appendChild(questionBlock);
+            });
+        }
+
+        // Näytä vastaus pysyvästi
+        function showAnswer(button) {
+            const answerElement = button.nextElementSibling;
+            answerElement.style.display = 'block';
+            button.style.display = 'none';
+        }
+
+        // Puhdistaa ylimääräiset merkit sanasta
+        function cleanWord(word) {
+            return word.replace(/[^a-zA-ZäöåÄÖÅ]+/g, '').trim();
+        }
+    </script>
+</body>
+</html>

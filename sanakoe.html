@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanakoe</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding-top: 50px;
+            background-image: url('tausta.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            justify-content: space-between;
+            width: 80%;
+            max-width: 800px;
+            margin: auto;
+            position: relative;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .word-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .word {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            text-align: center;
+            width: 100px;
+        }
+
+        .word.selected {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .button {
+            font-size: 1.2rem;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 30px;
+        }
+
+        .button:hover {
+            background-color: #2980b9;
+        }
+
+        .canvas-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sanakoe</h1>
+    <div class="container">
+        <div class="word-column" id="finnishWords"></div>
+        <div class="canvas-container">
+            <canvas id="lineCanvas"></canvas>
+        </div>
+        <div class="word-column" id="englishWords"></div>
+    </div>
+    <button class="button" onclick="checkAnswers()">Valmis</button>
+    <button class="button" onclick="location.href='index.html'">Palaa pääsivulle</button>
+    <p id="result"></p>
+
+    <script>
+        const words = JSON.parse(localStorage.getItem("sanakoeWords"));
+        const finnishWords = words.map(pair => pair[0]);
+        const englishWords = words.map(pair => pair[1]);
+        let selectedFinnish = null;
+        let selectedEnglish = null;
+        const connections = {};
+
+        let shuffledFinnish = [];
+        let shuffledEnglish = [];
+
+        function shuffleArray(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        function renderWords() {
+            shuffledFinnish = shuffleArray([...finnishWords]);
+            shuffledEnglish = shuffleArray([...englishWords]);
+
+            const finnishContainer = document.getElementById("finnishWords");
+            const englishContainer = document.getElementById("englishWords");
+            finnishContainer.innerHTML = "";
+            englishContainer.innerHTML = "";
+
+            shuffledFinnish.forEach(word => {
+                const element = document.createElement("div");
+                element.classList.add("word");
+                element.innerText = word;
+                element.onclick = () => selectWord("finnish", word, element);
+                finnishContainer.appendChild(element);
+            });
+
+            shuffledEnglish.forEach(word => {
+                const element = document.createElement("div");
+                element.classList.add("word");
+                element.innerText = word;
+                element.onclick = () => selectWord("english", word, element);
+                englishContainer.appendChild(element);
+            });
+        }
+
+        function selectWord(language, word, element) {
+            const selectedWord = language === "finnish" ? selectedFinnish : selectedEnglish;
+
+            if (selectedWord === word) {
+                if (language === "finnish") selectedFinnish = null;
+                else selectedEnglish = null;
+                element.classList.remove("selected");
+                delete connections[word];
+                drawConnections();
+                return;
+            }
+
+            if (language === "finnish") {
+                if (selectedFinnish) document.querySelector(`.word.selected`).classList.remove("selected");
+                selectedFinnish = word;
+            } else {
+                if (selectedEnglish) document.querySelector(`.word.selected`).classList.remove("selected");
+                selectedEnglish = word;
+            }
+            
+            element.classList.add("selected");
+
+            if (selectedFinnish && selectedEnglish) {
+                connections[selectedFinnish] = selectedEnglish;
+                selectedFinnish = null;
+                selectedEnglish = null;
+                drawConnections();
+                document.querySelectorAll(".word.selected").forEach(el => el.classList.remove("selected"));
+            }
+        }
+
+        function drawConnections() {
+            const canvas = document.getElementById("lineCanvas");
+            const ctx = canvas.getContext("2d");
+            const finnishEls = Array.from(document.getElementById("finnishWords").children);
+            const englishEls = Array.from(document.getElementById("englishWords").children);
+
+            canvas.width = document.querySelector(".container").offsetWidth;
+            canvas.height = document.querySelector(".container").offsetHeight;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            Object.keys(connections).forEach(finnish => {
+                const english = connections[finnish];
+                const finnishIndex = shuffledFinnish.indexOf(finnish);
+                const englishIndex = shuffledEnglish.indexOf(english);
+
+                if (finnishIndex !== -1 && englishIndex !== -1) {
+                    const finnishEl = finnishEls[finnishIndex];
+                    const englishEl = englishEls[englishIndex];
+
+                    const startX = finnishEl.getBoundingClientRect().right - canvas.getBoundingClientRect().left;
+                    const startY = finnishEl.getBoundingClientRect().top + finnishEl.offsetHeight / 2 - canvas.getBoundingClientRect().top;
+                    const endX = englishEl.getBoundingClientRect().left - canvas.getBoundingClientRect().left;
+                    const endY = englishEl.getBoundingClientRect().top + englishEl.offsetHeight / 2 - canvas.getBoundingClientRect().top;
+
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(endX, endY);
+                    ctx.strokeStyle = "#3498db";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function checkAnswers() {
+            let correct = 0;
+            words.forEach(pair => {
+                const [finnish, english] = pair;
+                if (connections[finnish] === english) correct++;
+            });
+            document.getElementById("result").innerText = `${correct}/5 oikein`;
+        }
+
+        renderWords();
+    </script>
+</body>
+</html>
